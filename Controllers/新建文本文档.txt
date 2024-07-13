@@ -1,0 +1,157 @@
+using Microsoft.AspNetCore.Mvc;
+using OpenCvSharp;
+using Sdcb.PaddleInference;
+using Sdcb.PaddleOCR.Models.Local;
+using Sdcb.PaddleOCR.Models;
+using Sdcb.PaddleOCR;
+using System.Text;
+using Tesseract;
+using static System.Net.Mime.MediaTypeNames;
+using OCRSimple.Utility;
+using System;
+using System.Text.RegularExpressions;
+using System.Text.Json;
+using OpenCvSharp.Extensions;
+using Org.BouncyCastle.Asn1.Pkcs;
+using System.Drawing;
+
+
+namespace OCRSimple.Controllers
+{
+    [ApiController]
+    [Route("[controller]")]
+    public class TesseractController : ControllerBase
+    {
+
+        private readonly ILogger<TesseractController> _logger;
+
+        public TesseractController(ILogger<TesseractController> logger)
+        {
+            _logger = logger;
+        }
+
+        public TesseractController()
+        {
+        }
+
+
+
+
+        [HttpPost(Name = "PostReadImage")]
+
+        public async Task<IActionResult> PostReadImageTesseract(string filepath)
+        {
+            //调用图片裁剪方法
+            string datetime = ImageCut.CutImage(filepath);
+
+            string name;
+            string tax_code;
+            string invoiceCode;
+            string invoiceDate;
+            string invoiceValue;
+
+
+            //"cutimage/" + datetime + "area1.png"
+            //"cutimage/" + datetime + "area2.png"
+            //"cutimage/" + datetime + "area3.png"
+
+            //using (var engine = new TesseractEngine(@"./tessdata", "chi_sim", EngineMode.Default))
+            // 这里的第一个参数是 Tesseract 数据文件的路径，第二个参数是要识别的语言（这里使用英文），第三个参数是引擎模式
+            var engine = new TesseractEngine(@"O:/software/tesseract-ocr/tessdata", "chi_sim", EngineMode.Default);
+
+            var img = Pix.LoadFromFile("cutimage/" + datetime + "area1.png");
+            var page = engine.Process(img);
+            img.Dispose();
+
+            //-----------------------------------------------------------------------
+            //发票号和开票日期
+            var text = page.GetText();
+            text = Regex.Replace(text, @"\s", "");
+            text = Regex.Replace(text, @"[a-zA-Z]", "");
+            //Console.WriteLine("发票号和开票日期=" + text);
+
+
+            if (text.Length < 0)
+            {
+                invoiceCode = null;
+                invoiceDate = null;
+            }
+            else
+            {
+                invoiceCode = InvoiceCode.readInvoiceCode(text);
+                //Console.WriteLine("发票号码：" + invoiceCode);
+
+                invoiceDate = InvoiceDate.readInvoiceDate(text);
+                //Console.WriteLine("开票日期：" + text);
+            }
+
+
+
+
+
+
+
+
+            //-----------------------------------------------------------------------
+            //名称和纳税人识别号
+            img = Pix.LoadFromFile("cutimage/" + datetime + "area2.png");
+            page = engine.Process(img);
+            img.Dispose();
+            text = page.GetText();
+            Console.WriteLine("名称和纳税人识别号=" + text);
+            text = Regex.Replace(text, @"\s", "");
+            text = Regex.Replace(text, @"[a-zA-Z]", "");
+
+            //匹配名称
+            name = "0";
+            int startIndex = text.IndexOf("瑞阳制药股份有限公司");
+            if (startIndex > -1)
+            {
+                name = "1";
+            }
+            Console.WriteLine("name=" + name);
+
+            //匹配纳税人识别号
+            tax_code = "0";
+            startIndex = text.IndexOf("913703001686121827");
+            if (startIndex > -1)
+            {
+                tax_code = "1";
+            }
+            Console.WriteLine("tax_code=" + tax_code);
+
+
+            //-----------------------------------------------------------------------
+            //金额
+            img = Pix.LoadFromFile("cutimage/" + datetime + "area3.png");
+            page = engine.Process(img);
+            img.Dispose();
+            text = page.GetText();
+            Console.WriteLine("金额=" + text);
+
+            if (text.Length < 0)
+            {
+                invoiceValue = "0";
+            }
+            else
+            {
+                invoiceValue = InvoiceValue.readInvoiceValue(text);
+                Console.WriteLine("invoiceValue=" + invoiceValue);
+            }
+
+            var invoicedata = new
+            {
+                name = name,
+                tax_code = tax_code,
+                invoiceNumber = invoiceCode,
+                invoiceDate = invoiceDate,
+                smallAmount = invoiceValue
+            };
+
+            String json = JsonSerializer.Serialize(invoicedata);
+
+            return Ok(json);
+        }
+
+    }
+}
