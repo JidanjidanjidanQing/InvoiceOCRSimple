@@ -6,6 +6,8 @@ using Sdcb.PaddleOCR.Models;
 using Sdcb.PaddleOCR;
 using System.Text;
 using static System.Net.Mime.MediaTypeNames;
+using OCRSimple.Models;
+using OCRSimple.Utils;
 
 
 
@@ -26,9 +28,16 @@ namespace OCRSimple.Controllers
 
         [HttpPost(Name = "PostReadImagePaddle")]
 
-        public async Task<string> PostReadImagePaddle(string filepath)
+        public async Task<string> PostReadImagePaddle([FromForm] Ocr ocr)
         {
             var strResult = string.Empty;
+
+            string filepath = FileUtil.UploadFile("test",ocr.file);
+
+            if (filepath == "not exist")
+            {
+                return await Task.FromResult("file not exist");
+            }    
 
             FullOcrModel model = LocalFullModels.ChineseV3;
 
